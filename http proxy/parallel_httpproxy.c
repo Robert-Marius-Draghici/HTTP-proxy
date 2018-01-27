@@ -311,8 +311,6 @@ int main(int argc, char *argv[]) {
 				perror("could not create thread");
 				return 1;
 			}
-			// Now join the thread, so that we dont terminate before the thread
-			pthread_join( thread_id, NULL);
 			printf("Handler assigned\n");
 		}
 		if(client_socket < 0) {
