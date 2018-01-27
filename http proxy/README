@@ -1,13 +1,6 @@
 Tema 3 Protocoale de comunicatie
 Draghici Marius Robert, 325CD
 ================================================================================
-	Punct de pornire:
-	
-	Mentionez ca am pornit implementarea de la codul din laboratorul 8 si din
-laboratorul 11. Din laboratorul 8, am folosit API-ul de multiplexare cu select,
-iar din laboratorul 11 am preluat functia Readline si tot ceea ce tine de 
-trimiterea cererii la server si a raspunsului inapoi la client.
-================================================================================
 	Structuri auxiliare:
 	
 	Structura HTTPRequest este folosita pentru a retine campurile relevante din
