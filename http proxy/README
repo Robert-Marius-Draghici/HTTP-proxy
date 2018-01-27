@@ -1,0 +1,144 @@
+Tema 3 Protocoale de comunicatie
+Draghici Marius Robert, 325CD
+================================================================================
+	Punct de pornire:
+	
+	Mentionez ca am pornit implementarea de la codul din laboratorul 8 si din
+laboratorul 11. Din laboratorul 8, am folosit API-ul de multiplexare cu select,
+iar din laboratorul 11 am preluat functia Readline si tot ceea ce tine de 
+trimiterea cererii la server si a raspunsului inapoi la client.
+================================================================================
+	Structuri auxiliare:
+	
+	Structura HTTPRequest este folosita pentru a retine campurile relevante din
+cadrul unei cereri HTTP si anume request-ul(prima linie din cerere), host-ul
+unde se afla resursa ceruta de browser, calea catre aceasta resursa, eventual
+portul prin care proxy-ul sa se conecteze la server pentru a prelua resursa 
+(daca nu este specificat atunci este implicit 80) si o variabila care este 1
+daca in cerere nu exista vreo restrictie legata de pastrarea raspunsului de la
+server in cache(Cache-control: private sau Pragma: no-cache) sau 0, in caz 
+contrar.
+
+	Structura FileMap asociaza fiecarei cereri HTTP un fisier cache in care
+se stocheaza raspunsul de la server in cazul in care acest lucru este permis.
+
+	Structura FileMapSet este folosita pentru a stoca in mod dinamic cererile
+HTTP impreuna cu fisierul cache. Intrucat nu am cum sa stiu de la inceput cate
+cereri HTTP care permit pastrarea raspunsului in cache voi avea, am creat 
+aceasta structura care are o capacitate initiala. Daca dimensiunea curenta 
+este egala cu capacitatea, atunci capacitatea se dubleaza prin realocarea
+spatiului din memorie alocat pentru vector. De asemenea, structura este un set
+(multime), deoarece nu contine cereri duplicat.
+
+	Pentru a gestiona structurile de mai sus, am creat functii de initializare
+a setului, de inserare a unui element, de stergere a ultimului element si de
+cautare.
+================================================================================
+	Functii:
+	
+	Functia check_request verifica daca cererea primita de la browser este valida.
+ O cerere HTTP trebuie sa contina mai intai de toate o comanda valida (conform 
+ rfc 1945 aceste cereri sunt GET, POST, HEAD, PUT, DELETE, LINK, UNLINK). De 
+ asemenea, o cerere valida trebuie sa contina hostul si calea catre resursa. O 
+ cerere formata doar din linia METODA / HTTP/1.0 e invalida, deoarece nu 
+ precizeaza hostul.
+ 
+ 	Functia parse_request extrage din cererea HTTP informatiile relevante pe
+ care le stocheaza apoi in structura HTTPRequest. 
+ 	Fiecare rand dintr-o cerere HTTP are la final newline (\n).
+	Din cererea HTTP, trebuie sa extrag mai multe informatii: hostul unde se afla
+resursa ceruta, calea catre resursa ceruta, portul pe care ar trebui sa ma 
+conectez la host daca acesta este mentionat si daca raspunsul poate fi stocat in 
+cache sau nu. 
+	Intr-o cerere HTTP, prima linie specifica mereu metoda, calea către 
+resursă și versiunea de HTTP.
+	In functie de tipul cererii (absoluta sau relativa), trebuie sa parsez
+fie prima linie, fie primele doua. 
+	O cale absoluta este de forma http://host:port/cale_catre_resursa. In cazul 
+in care in URL se specifica un port, acesta va fi separat de host prin :. In 
+cazul in care nu se specifica vreun port, cel implicit este 80.
+	O cale relativa este de forma:
+	METODA cale_catre_resursa HTTP/1.0
+	Host: host:port
+	Conform rfc, "If the request is GET or HEAD and a prior response is cached, 
+the proxy may use the cached message if it passes any restrictions in the Expires
+header field.", doar raspunsurile de la cererile GET si HEAD pot fi pastrate in 
+cache, atata timp cat nu exista alte restrictii, precum Pragma: no-cache. "When 
+the "no-cache" directive is present in a request message, an application should 
+forward the request toward the origin server even if it has a cached copy of 
+what is being requested."
+
+	Functia search_cache verifica daca am mai realizat cererea curenta si inainte.
+================================================================================
+	Apeluri blocante si select:
+	
+	Proxy-ul joaca atat rolul serverului(pentru browser-ul care realizeaza
+cererea), cat si rolul clientului(pentru serverul de la care trebuie preluata 
+resursa ceruta). Astfel, in cadrul proxy-ului intalnim mai multe apeluri
+blocante: apelul accept(citire de pe socketul inactiv pe care se primesc cereri
+de la browser), apelul recv (care realizeaza citirea de pe socketii activi 
+socketii asociati browserului). Pentru a evita anumite inconveniente, cum ar fi 
+sa asteptam sa primim date pe un socket pentru a putea trimite date pe un alt 
+socket, se foloseste functia select, care permite citirea datelor de pe socketii 
+care au primit date si gestionarea mai multor socketi in acelasi timp.	
+================================================================================
+	Implementare:
+	
+	Initial, proxy-ul creeaza un socket TCP pe care il leaga de adresa IP a 
+masinii locale si portul specificat in linia de comanda. Pe acest socket TCP,
+proxy-ul asteapta cererile de la browser. Cand un browser doreste sa trimita
+o cerere HTTP, trimite o cerere de conectare la proxy, care o accepta si apoi
+ii transmite cererea. 
+
+	Proxy-ul verifica daca cererea primita este valida. Daca nu este valida, 
+atunci trimite un cod de eroare conform RFC. Daca metoda utilizata este diferita
+de metodele specificate in cadrul RFC se intoarce un cod de eroare HTTP/1.0 501 
+Not Implemented. De asemenea, daca metoda exista insa este scrisa gresit se va
+intoarce acelasi cod de eroare. Daca metoda este corecta, insa cererea contine 
+doar prima linie si nu se specifica hostul, atunci in aceasta situatie avem o 
+eroare de tip HTTP/1.0 400 Bad request. De asemenea, daca se specifica hostul in
+prima linie, dar nu se specifica calea catre resursa, atunci si aceasta reprezinta
+un Bad request. In cazul in care exista erori de sintaxa in versiunea de HTTP, 
+intoarcem o eroare HTTP/1.0 505 HTTP Version Not Supported. In cazul in care mai
+exista alte erori legate de cerere, acestea vor fi tratate de serverul caruia ii
+este trimisa respectiva cerere.
+
+	Daca cererea este una valida, atunci cu dns se identifica adresa ip asociata
+hostului extras din URL si apoi se formeaza adresa serverului(folosind portul
+specificat in URL sau , daca nu exista, portul 80). Inainte de a trimite cererea,
+se verifica mai intai daca aceasta a mai fost facuta in trecut si daca raspunsul
+ei se afla in cache. Daca raspunsul cererii a fost gasit in cache, atunci nu se
+mai realizeaza conexiunea la server, ci se transmite continutul fisierului cache
+la client. In caz contrar, se formeaza adresa serverului, apoi proxy se conecteaza
+la acest server, ii trimite cererea (stocata intr-un buffer) nemodificata si
+apoi citeste raspunsul linie cu linie si il trimite inapoi la client. Daca
+in cerere nu exista vreo restrictie legata de cache, insa in timp ce citim
+raspunsul gasim una din liniile Cache-control: private sau Pragma: no-cache,
+atunci chiar daca am inceput sa scriem raspunsul intr-un fisier local, acesta
+va fi eliminat din set, deci nu va fi luat in considerare ca fiind stocat in
+cache. Dupa cum se specifica in enunt, pot fi introduse in cache, doar 
+raspunsurile cu cod 200 OK si fara restrictiile anterior precizate. Dupa ce
+clientul(browser-ul) a primit intreg raspunsul de la proxy, se inchide socketul
+acestuia(clientului).
+
+	Mentionez faptul ca am decis ca atunci cand intalnesc o eroare la recv,
+gethostbyname, socket, inet_aton, connect, sa inchid socketul browser-ului, dar
+nu si proxy-ul, acesta putand accepta in continuare alte cereri de la browser.
+================================================================================
+	Implementare bonus:
+	
+	Pentru implementarea bonusului, in loc de API-ul de multiplexare, am decis
+ca de fiecare data cand accept o cerere de conectare de la un browser, sa creez
+un nou thread care sa se ocupe de cererea http a browserului. Folosesc functia
+pthread_create pentru a crea noile thread-uri. Aceasta functie are urmatoarele
+argumente: o variabila de tip pthread_t pentru a identifica thread-ul creat,
+o structura ce contine atributele thread-ului(am pus NULL pentru a folosi
+atributele default), functia unde se va executa threadul si argumentul acestei
+functii. In acest caz, functia aleasa este cea care se va ocupa de tratarea
+cererilor http in acelasi mod ca si in implementarea cu multiplexare, iar
+argumentul va fi socketul browser-ului client. 
+================================================================================
+	Makefile:
+	
+	In Makefile am regula de build, clean si reguli de rulare a checkerului atat
+cu proxy-ul implementat cu multiplexare, cat si cel cu thread-uri.
